@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Cpu, HardDrive, Network, MemoryStick, Pause, Play } from "lucide-react"
+import { Cpu, HardDrive, Network, MemoryStick, Pause, Play, Database } from "lucide-react"
 import RealtimeChart from "../components/RealtimeChart"
 import StatCard from "../components/StatCard"
-import { useWebSocket } from "../hooks/useWebSocket.jsx"
+import { useWebSocket } from "../hooks/useWebSocket"
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
@@ -13,7 +13,8 @@ export default function SystemOverview() {
   const [paused, setPaused] = useState(false)
   const [cpuData, setCpuData] = useState([])
   const [memData, setMemData] = useState([])
-  const [diskData, setDiskData] = useState([])
+  const [diskIOData, setDiskIOData] = useState([])
+  const [diskUsageData, setDiskUsageData] = useState([])
   const [netData, setNetData] = useState([])
   const [currentStats, setCurrentStats] = useState(null)
 
@@ -22,12 +23,13 @@ export default function SystemOverview() {
 
   useEffect(() => {
     if (data && !paused) {
-      const timestamp = new Date(data.ts_ms).toLocaleTimeString();
-      setCurrentStats(data);
+      const timestamp = new Date(data.ts_ms).toLocaleTimeString()
+
+      setCurrentStats(data)
 
       setCpuData((prev) => {
-        const newData = [...prev, { time: timestamp, value: data.cpu_percent }];
-        return newData.slice(-60); // Keep last 60 points
+        const newData = [...prev, { time: timestamp, value: data.cpu_percent }]
+        return newData.slice(-60)
       })
 
       setMemData((prev) => {
@@ -35,13 +37,24 @@ export default function SystemOverview() {
         return newData.slice(-60)
       })
 
-      setDiskData((prev) => {
+      setDiskIOData((prev) => {
         const newData = [
           ...prev,
           {
             time: timestamp,
             read: data.read_Bps / 1024,
             write: data.write_Bps / 1024,
+          },
+        ]
+        return newData.slice(-60)
+      })
+
+      setDiskUsageData((prev) => {
+        const newData = [
+          ...prev,
+          {
+            time: timestamp,
+            value: data.disk_used_percent || 0,
           },
         ]
         return newData.slice(-60)
@@ -95,7 +108,7 @@ export default function SystemOverview() {
 
       {/* Current Stats */}
       {currentStats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <StatCard
             icon={<Cpu className="w-6 h-6 text-primary" />}
             label="CPU Usage"
@@ -107,6 +120,12 @@ export default function SystemOverview() {
             label="Memory"
             value={`${(currentStats.mem_bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`}
             color="error"
+          />
+          <StatCard
+            icon={<Database className="w-6 h-6 text-info" />}
+            label="Disk Usage"
+            value={`${currentStats.disk_used_percent?.toFixed(1) || 0}%`}
+            color="info"
           />
           <StatCard
             icon={<HardDrive className="w-6 h-6 text-success" />}
@@ -129,7 +148,7 @@ export default function SystemOverview() {
         <RealtimeChart title="Memory Usage (MB)" data={memData} dataKey="value" color="#8b5cf6" unit="MB" />
         <RealtimeChart
           title="Disk I/O (KB/s)"
-          data={diskData}
+          data={diskIOData}
           dataKeys={["read", "write"]}
           colors={["#10b981", "#ef4444"]}
           unit="KB/s"

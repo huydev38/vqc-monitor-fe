@@ -8,7 +8,6 @@ import StatCard from "../components/StatCard"
 import LogViewer from "../components/LogViewer"
 import { useWebSocket } from "../hooks/useWebSocket"
 import { fetchServiceStats, fetchApps, controlService } from "../utils/api"
-import { log } from "console"
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
 

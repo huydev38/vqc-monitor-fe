@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import { Terminal } from "lucide-react"
 
 export default function LogViewer({ logs }) {
-  console.log("Rendering LogViewer with logs:", logs)
+  // console.log("Rendering LogViewer with logs:", logs)
   // const logEndRef = useRef(null)
   // useEffect(() => {
   //   logEndRef.current?.scrollIntoView({ behavior: "smooth" })
