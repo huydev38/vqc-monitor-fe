@@ -8,6 +8,8 @@ import StatCard from "../components/StatCard"
 import LogViewer from "../components/LogViewer"
 import { useWebSocket } from "../hooks/useWebSocket"
 import { fetchServiceStats, fetchApps, controlService } from "../utils/api"
+import AlertsTable from "../components/AlertsTable"
+import { useAlerts } from "../hooks/useAlerts"
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
 
@@ -34,6 +36,17 @@ export default function ServiceDetail() {
   const { data: logData } = useWebSocket(logsWsUrl, mode === "live" && appId !== "system")
 
   const [controlLoading, setControlLoading] = useState(false)
+  const { alerts: serviceAlerts } = useAlerts(appId, 50, appId !== "system")
+  const [hasActiveAlert, setHasActiveAlert] = useState({})
+
+  useEffect(() => {
+    const alertMap = {}
+    serviceAlerts.forEach((alert) => {
+      const key = alert.alert_type
+      alertMap[key] = true
+    })
+    setHasActiveAlert(alertMap)
+  }, [serviceAlerts])
 
   useEffect(() => {
     const loadServiceInfo = async () => {
@@ -108,7 +121,7 @@ export default function ServiceDetail() {
       setCurrentStats(null)
       setHasData(true)
     }
-  }, [mode, appId])
+  }, [mode])
 
   const loadHistoricalData = async () => {
     setLoading(true)
@@ -250,24 +263,13 @@ export default function ServiceDetail() {
   }
 
   useEffect(() => {
-  if (mode === "live") setLogs([])
-}, [appId, mode])
-
-// Nhận log từ hook: flatten mảng dòng
-  useEffect(() => {
-      if (mode !== "live" || !logData) return
-
-      // 4 trường hợp để an toàn tương thích:
-      if (Array.isArray(logData)) {
-        setLogs(logData.slice(-100))
-      } else if (typeof logData === "string") {
-        setLogs(prev => [...prev, logData].slice(-100))
-      } else if (typeof logData?.message === "string") {
-        setLogs(prev => [...prev, logData.message].slice(-100))
-      } else if (logData?.lines && Array.isArray(logData.lines)) {
-        setLogs(prev => [...prev, ...logData.lines].slice(-100))
-      }
-    }, [logData, mode])
+    if (logData) {
+      setLogs((prev) => {
+        const newLogs = [...prev, logData.message || JSON.stringify(logData)]
+        return newLogs.slice(-100) // Keep last 100 logs
+      })
+    }
+  }, [logData])
 
   return (
     <div className="space-y-6">
@@ -424,19 +426,18 @@ export default function ServiceDetail() {
                 icon={<Cpu className="w-6 h-6 text-primary" />}
                 label="CPU Usage"
                 value={`${currentStats.cpu_percent.toFixed(1)}%`}
-                color="primary"
+                isAlert={hasActiveAlert.cpu}
               />
               <StatCard
-                icon={<MemoryStick className="w-6 h-6 text-error" />}
+                icon={<MemoryStick className="w-6 h-6 text-primary" />}
                 label="Memory"
                 value={`${(currentStats.mem_bytes / (1024 * 1024)).toFixed(1)} MB`}
-                color="error"
+                isAlert={hasActiveAlert.memory}
               />
               <StatCard
-                icon={<HardDrive className="w-6 h-6 text-success" />}
+                icon={<HardDrive className="w-6 h-6 text-primary" />}
                 label="Disk I/O"
                 value={`${((currentStats.read_Bps + currentStats.write_Bps) / 1024).toFixed(1)} KB/s`}
-                color="success"
               />
             </div>
           )}
@@ -479,6 +480,9 @@ export default function ServiceDetail() {
           )}
         </>
       )}
+
+      {appId !== "system" && <AlertsTable appId={appId} title={`${appId} Alerts`} />}
+      {appId === "system" && <AlertsTable appId="__system__" title="System Alerts" />}
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Moon, Sun, Activity, Server, Menu, X, RefreshCw, Monitor } from "lucide-react"
+import HeaderNotification from "./HeaderNotification"
 import { fetchApps } from "../utils/api"
 
 export default function Layout({ children, darkMode, toggleDarkMode }) {
@@ -46,7 +47,7 @@ export default function Layout({ children, darkMode, toggleDarkMode }) {
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Activity className="w-6 h-6 text-primary" />
-            System Monitor
+            VQC System Monitor
           </h1>
         </div>
 
@@ -124,9 +125,12 @@ export default function Layout({ children, darkMode, toggleDarkMode }) {
               {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
 
-            <button onClick={toggleDarkMode} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
+            <div className="flex items-center gap-4">
+              <HeaderNotification />
+              <button onClick={toggleDarkMode} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </header>
 

@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Cpu, HardDrive, Network, MemoryStick, Pause, Play, Database } from "lucide-react"
 import RealtimeChart from "../components/RealtimeChart"
 import StatCard from "../components/StatCard"
 import ServicesTable from "../components/ServicesTable"
-import AlertNotification from "../components/AlertNotification"
+import AlertsTable from "../components/AlertsTable"
 import { useWebSocket } from "../hooks/useWebSocket"
+import { useAlerts } from "../hooks/useAlerts" // Import the useAlerts hook
+import { fetchApps } from "../utils/api"
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
@@ -21,37 +23,37 @@ export default function SystemOverview() {
   const [netData, setNetData] = useState([])
   const [currentStats, setCurrentStats] = useState(null)
   const [services, setServices] = useState([])
-  const [alerts, setAlerts] = useState([])
-  const thresholdExceededRef = useRef({})
+  const [appsInfo, setAppsInfo] = useState({})
+  const [hasActiveAlert, setHasActiveAlert] = useState({})
 
   const wsUrl = `${WS_BASE_URL}/ws/live?mode=combined&interval_ms=1000`
   const { data, error, isConnected } = useWebSocket(wsUrl, !paused)
+  const { alerts: systemAlerts } = useAlerts("__system__", 50, true)
 
-  const addAlert = (key, title, message) => {
-    const alertId = `${key}-${Date.now()}`
-    setAlerts((prev) => [...prev, { id: alertId, title, message }])
-    setTimeout(() => {
-      setAlerts((prev) => prev.filter((a) => a.id !== alertId))
-    }, 5000)
-  }
-
-  const dismissAlert = (alertId) => {
-    setAlerts((prev) => prev.filter((a) => a.id !== alertId))
-  }
-
-  const checkThreshold = (key, value, label, threshold, isPercentage = true) => {
-    const thresholdValue = isPercentage ? threshold * 100 : threshold
-    if (value >= thresholdValue) {
-      if (!thresholdExceededRef.current[key]) {
-        thresholdExceededRef.current[key] = Date.now()
-      } else if (Date.now() - thresholdExceededRef.current[key] >= ALERT_DURATION_MS) {
-        addAlert(key, `${label} Alert`, `${label} has exceeded ${thresholdValue.toFixed(0)}% for more than 10 seconds`)
-        thresholdExceededRef.current[key] = Date.now()
+  useEffect(() => {
+    const loadAppsInfo = async () => {
+      try {
+        const apps = await fetchApps()
+        const appsMap = {}
+        apps.forEach((app) => {
+          appsMap[app.app_id] = app
+        })
+        setAppsInfo(appsMap)
+      } catch (error) {
+        console.error("Failed to load apps info:", error)
       }
-    } else {
-      thresholdExceededRef.current[key] = null
     }
-  }
+    loadAppsInfo()
+  }, [])
+
+  useEffect(() => {
+    const alertMap = {}
+    systemAlerts.forEach((alert) => {
+      const key = alert.alert_type
+      alertMap[key] = true
+    })
+    setHasActiveAlert(alertMap)
+  }, [systemAlerts])
 
   useEffect(() => {
     if (data && !paused) {
@@ -59,22 +61,12 @@ export default function SystemOverview() {
 
       setCurrentStats(data.system)
       if (data.services) {
-        setServices(data.services)
-      }
-
-      checkThreshold("system-cpu", data.system.cpu_percent, "System CPU", data.system.cpu_threshold)
-      const memPercent = (data.system.mem_bytes / data.system.total_ram) * 100
-      checkThreshold("system-mem", memPercent, "System Memory", data.system.memory_threshold)
-
-      if (data.services) {
-        data.services.forEach((service) => {
-          const serviceCpuKey = `service-cpu-${service.app_id}`
-          const serviceMemKey = `service-mem-${service.app_id}`
-          const serviceMemMB = service.mem_bytes / (1024 * 1024)
-
-          checkThreshold(serviceCpuKey, service.cpu_percent, `${service.app_id} CPU`, service.cpu_threshold / 100)
-          checkThreshold(serviceMemKey, serviceMemMB, `${service.app_id} Memory`, service.memory_threshold_mb, false)
-        })
+        const servicesWithVersion = data.services.map((service) => ({
+          ...service,
+          version: appsInfo[service.app_id]?.version,
+          actual_version: appsInfo[service.app_id]?.actual_version,
+        }))
+        setServices(servicesWithVersion)
       }
 
       setCpuData((prev) => {
@@ -122,7 +114,7 @@ export default function SystemOverview() {
         return newData.slice(-60)
       })
     }
-  }, [data, paused])
+  }, [data, paused, appsInfo])
 
   return (
     <div className="space-y-6">
@@ -163,31 +155,28 @@ export default function SystemOverview() {
             icon={<Cpu className="w-6 h-6 text-primary" />}
             label="CPU Usage"
             value={`${currentStats.cpu_percent?.toFixed(1)}%`}
-            color="primary"
+            isAlert={hasActiveAlert.cpu}
           />
           <StatCard
-            icon={<MemoryStick className="w-6 h-6 text-error" />}
+            icon={<MemoryStick className="w-6 h-6 text-primary" />}
             label="Memory"
             value={`${(currentStats.mem_bytes / (1024 * 1024 * 1024)).toFixed(1)} / ${(currentStats.total_ram / (1024 * 1024 * 1024)).toFixed(1)} GB`}
-            color="error"
+            isAlert={hasActiveAlert.memory}
           />
           <StatCard
-            icon={<Database className="w-6 h-6 text-info" />}
+            icon={<Database className="w-6 h-6 text-primary" />}
             label="Disk Usage"
             value={`${currentStats.disk_used_percent?.toFixed(1) || 0}%`}
-            color="info"
           />
           <StatCard
-            icon={<HardDrive className="w-6 h-6 text-success" />}
+            icon={<HardDrive className="w-6 h-6 text-primary" />}
             label="Disk I/O"
             value={`${((currentStats.read_Bps + currentStats.write_Bps) / 1024).toFixed(1)} KB/s`}
-            color="success"
           />
           <StatCard
-            icon={<Network className="w-6 h-6 text-warning" />}
+            icon={<Network className="w-6 h-6 text-primary" />}
             label="Network"
             value={`${(((currentStats.net_rx_Bps || 0) + (currentStats.net_tx_Bps || 0)) / 1024).toFixed(1)} KB/s`}
-            color="warning"
           />
         </div>
       )}
@@ -217,7 +206,7 @@ export default function SystemOverview() {
         />
       </div>
 
-      <AlertNotification alerts={alerts} onDismiss={dismissAlert} />
+      <AlertsTable appId="__system__" title="System Alerts" />
     </div>
   )
 }

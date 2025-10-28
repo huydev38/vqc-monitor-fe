@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle } from "lucide-react"
+import { AlertCircle, CheckCircle, AlertTriangle } from "lucide-react"
 
 export default function ServicesTable({ services, systemStats }) {
   const getStatusColor = (isExceeded) => {
@@ -15,6 +15,10 @@ export default function ServicesTable({ services, systemStats }) {
     return (bytes / (1024 * 1024)).toFixed(1)
   }
 
+  const isVersionMismatch = (service) => {
+    return service.version && service.actual_version && service.version !== service.actual_version
+  }
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div className="overflow-x-auto">
@@ -24,6 +28,8 @@ export default function ServicesTable({ services, systemStats }) {
               <th className="px-6 py-3 text-left text-sm font-semibold">Service</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">CPU</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Memory</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Defined Version</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Actual Version</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Alert</th>
             </tr>
           </thead>
@@ -33,6 +39,7 @@ export default function ServicesTable({ services, systemStats }) {
               const cpuExceeded = service.cpu_percent >= service.cpu_threshold
               const memMB = service.mem_bytes / (1024 * 1024)
               const memExceeded = memMB >= service.memory_threshold_mb
+              const versionMismatch = isVersionMismatch(service)
 
               return (
                 <tr
@@ -61,6 +68,17 @@ export default function ServicesTable({ services, systemStats }) {
                       {memExceeded && <AlertCircle className="w-3 h-3 text-danger" />}
                     </div>
                   </td>
+
+                  <td className="px-6 py-4 text-sm">{service.version || "-"}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      {service.actual_version || "-"}
+                      {versionMismatch && (
+                        <AlertTriangle className="w-4 h-4 text-warning" title="Version mismatch detected" />
+                      )}
+                    </div>
+                  </td>
+
                   <td className="px-6 py-4">
                     {cpuExceeded || memExceeded ? (
                       <div className="inline-flex items-center gap-2 text-danger">

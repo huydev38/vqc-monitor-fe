@@ -67,3 +67,18 @@ export async function controlService(appId, action) {
     throw error
   }
 }
+
+export async function fetchAlerts(appId = null, limit = 50) {
+  try {
+    const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
+    let url = `${WS_BASE_URL}/ws/alerts?limit=${limit}`
+    if (appId) {
+      url += `&app_id=${appId}`
+    }
+    // Note: This is a WebSocket endpoint, use useAlerts hook instead
+    return url
+  } catch (error) {
+    console.error("Failed to get alerts URL:", error)
+    throw error
+  }
+}
