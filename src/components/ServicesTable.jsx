@@ -30,6 +30,7 @@ export default function ServicesTable({ services, systemStats }) {
               <th className="px-6 py-3 text-left text-sm font-semibold">Memory</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Defined Version</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Actual Version</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Uptime</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Alert</th>
             </tr>
           </thead>
@@ -78,6 +79,8 @@ export default function ServicesTable({ services, systemStats }) {
                       )}
                     </div>
                   </td>
+
+                  <td className="px-6 py-4 text-sm">{service.uptime || "-"}</td>
 
                   <td className="px-6 py-4">
                     {cpuExceeded || memExceeded ? (
