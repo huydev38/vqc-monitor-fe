@@ -15,7 +15,7 @@ const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
 
 export default function ServiceDetail() {
   const { appId } = useParams()
-  const [mode, setMode] = useState("history")
+  const [mode, setMode] = useState()
   const [cpuData, setCpuData] = useState([])
   const [memData, setMemData] = useState([])
   const [diskData, setDiskData] = useState([])
@@ -49,6 +49,11 @@ export default function ServiceDetail() {
   }, [serviceAlerts])
 
   useEffect(() => {
+    if(appId === "system") {
+      setMode("history")
+    }else {
+      setMode("live")
+    }
     const loadServiceInfo = async () => {
       try {
         const services = await fetchApps()

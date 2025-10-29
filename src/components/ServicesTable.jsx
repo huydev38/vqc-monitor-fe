@@ -1,6 +1,8 @@
 import { AlertCircle, CheckCircle, AlertTriangle } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 export default function ServicesTable({ services, systemStats }) {
+  const navigate = useNavigate()
   const getStatusColor = (isExceeded) => {
     if (isExceeded) return "text-danger bg-danger/10"
     return "text-success bg-success/10"
@@ -17,6 +19,11 @@ export default function ServicesTable({ services, systemStats }) {
 
   const isVersionMismatch = (service) => {
     return service.version && service.version_real && service.version !== service.version_real
+  }
+
+  const handleRowClick = (service) => {
+    navigate(`/service/${service.app_id}`)
+    
   }
 
   return (
@@ -46,6 +53,7 @@ export default function ServicesTable({ services, systemStats }) {
                 <tr
                   key={service.app_id}
                   className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                  onClick={() => handleRowClick(service)}
                 >
                   <td className="px-6 py-4 font-medium">{service.app_id}</td>
 
