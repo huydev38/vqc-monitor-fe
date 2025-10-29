@@ -64,7 +64,7 @@ export default function SystemOverview() {
         const servicesWithVersion = data.services.map((service) => ({
           ...service,
           version: appsInfo[service.app_id]?.version,
-          actual_version: appsInfo[service.app_id]?.actual_version,
+          version_real: appsInfo[service.app_id]?.version_real,
         }))
         setServices(servicesWithVersion)
       }

@@ -16,7 +16,7 @@ export default function ServicesTable({ services, systemStats }) {
   }
 
   const isVersionMismatch = (service) => {
-    return service.version && service.actual_version && service.version !== service.actual_version
+    return service.version && service.version_real && service.version !== service.version_real
   }
 
   return (
@@ -72,7 +72,7 @@ export default function ServicesTable({ services, systemStats }) {
                   <td className="px-6 py-4 text-sm">{service.version || "-"}</td>
                   <td className="px-6 py-4 text-sm">
                     <div className="flex items-center gap-2">
-                      {service.actual_version || "-"}
+                      {service.version_real || "-"}
                       {versionMismatch && (
                         <AlertTriangle className="w-4 h-4 text-warning" title="Version mismatch detected" />
                       )}

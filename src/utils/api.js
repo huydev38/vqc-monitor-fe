@@ -15,6 +15,7 @@ export async function fetchApps() {
       trackable: details.trackable,
       version: details.version,
       cgroup: details.cgroup,
+      version_real: details.version_real,
     }))
   } catch (error) {
     console.error("Failed to fetch apps:", error)
