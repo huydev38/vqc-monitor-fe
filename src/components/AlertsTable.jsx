@@ -7,7 +7,7 @@ import { useAlerts } from "../hooks/useAlerts"
 
 export default function AlertsTable({ appId = null, title = "Alerts" }) {
   const [displayedAlerts, setDisplayedAlerts] = useState([])
-  const [limit, setLimit] = useState(50)
+  const [limit, setLimit] = useState(10)
   const navigate = useNavigate()
   const { alerts, isConnected, error } = useAlerts(appId, limit, true)
 
@@ -16,7 +16,7 @@ export default function AlertsTable({ appId = null, title = "Alerts" }) {
   }, [alerts])
 
   const handleLoadMore = () => {
-    setLimit((prev) => prev + 50)
+    setLimit((prev) => prev + 10)
   }
 
   const formatTime = (tsMs) => {

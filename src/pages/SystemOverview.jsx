@@ -28,7 +28,7 @@ export default function SystemOverview() {
 
   const wsUrl = `${WS_BASE_URL}/ws/live?mode=combined&interval_ms=1000`
   const { data, error, isConnected } = useWebSocket(wsUrl, !paused)
-  const { alerts: systemAlerts } = useAlerts("__system__", 50, true)
+  const { alerts: systemAlerts } = useAlerts("__system__", 10, true)
 
   useEffect(() => {
     const loadAppsInfo = async () => {

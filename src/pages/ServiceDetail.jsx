@@ -5,7 +5,6 @@ import { useParams } from "react-router-dom"
 import { Cpu, HardDrive, MemoryStick, Activity, AlertCircle, Calendar, Play, Square, RotateCw } from "lucide-react"
 import RealtimeChart from "../components/RealtimeChart"
 import StatCard from "../components/StatCard"
-import LogViewer from "../components/LogViewer"
 import { useWebSocket } from "../hooks/useWebSocket"
 import { fetchServiceStats, fetchApps, controlService } from "../utils/api"
 import AlertsTable from "../components/AlertsTable"
@@ -31,12 +30,8 @@ export default function ServiceDetail() {
 
   const [hasData, setHasData] = useState(true)
 
-  const [logs, setLogs] = useState([])
-  const logsWsUrl = `${WS_BASE_URL}/ws/logs?service=${appId}`
-  const { data: logData } = useWebSocket(logsWsUrl, mode === "live" && appId !== "system")
-
   const [controlLoading, setControlLoading] = useState(false)
-  const { alerts: serviceAlerts } = useAlerts(appId, 50, appId !== "system")
+  const { alerts: serviceAlerts } = useAlerts(appId, 10, appId !== "system")
   const [hasActiveAlert, setHasActiveAlert] = useState({})
 
   useEffect(() => {
@@ -49,9 +44,9 @@ export default function ServiceDetail() {
   }, [serviceAlerts])
 
   useEffect(() => {
-    if(appId === "system") {
+    if (appId === "system") {
       setMode("history")
-    }else {
+    } else {
       setMode("live")
     }
     const loadServiceInfo = async () => {
@@ -267,15 +262,6 @@ export default function ServiceDetail() {
     }
   }
 
-  useEffect(() => {
-    if (logData) {
-      setLogs((prev) => {
-        const newLogs = [...prev, logData.message || JSON.stringify(logData)]
-        return newLogs.slice(-100) // Keep last 100 logs
-      })
-    }
-  }, [logData])
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -348,8 +334,6 @@ export default function ServiceDetail() {
           <span>This service is not trackable. Monitoring data is not available.</span>
         </div>
       )}
-
-      {appId !== "system" && mode === "live" && <LogViewer logs={logs} />}
 
       {trackable && (
         <>
