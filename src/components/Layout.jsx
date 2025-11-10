@@ -4,10 +4,11 @@ import { useState, useEffect } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Moon, Sun, Activity, Server, Menu, X, RefreshCw, Monitor } from "lucide-react"
 import HeaderNotification from "./HeaderNotification"
-import { fetchApps } from "../utils/api"
+import { fetchApps, fetchContainers } from "../utils/api"
 
 export default function Layout({ children, darkMode, toggleDarkMode }) {
   const [services, setServices] = useState([])
+  const [containers, setContainers] = useState([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -16,6 +17,12 @@ export default function Layout({ children, darkMode, toggleDarkMode }) {
   useEffect(() => {
     loadServices()
     const interval = setInterval(loadServices, 30000) // Refresh every 30s
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    loadContainers()
+    const interval = setInterval(loadContainers, 30000)
     return () => clearInterval(interval)
   }, [])
 
@@ -31,9 +38,21 @@ export default function Layout({ children, darkMode, toggleDarkMode }) {
     }
   }
 
+  const loadContainers = async () => {
+      try {
+        const containersList = await fetchContainers()
+        setContainers(containersList)
+      } catch (error) {
+        console.error("Failed to load containers:", error)
+      }
+    }
+
+
+
   const handleRefresh = async () => {
     setRefreshing(true)
     await loadServices()
+    await loadContainers()
   }
 
   return (
@@ -47,7 +66,7 @@ export default function Layout({ children, darkMode, toggleDarkMode }) {
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Activity className="w-6 h-6 text-primary" />
-            VQC System Monitor
+            System Monitor
           </h1>
         </div>
 
@@ -106,6 +125,33 @@ export default function Layout({ children, darkMode, toggleDarkMode }) {
                 <span
                   className={`w-2 h-2 rounded-full ${service.running ? "bg-success" : "bg-danger"}`}
                   title={service.running ? "Running" : "Stopped"}
+                />
+              </Link>
+            ))
+          )}
+
+          <div className="pt-4 pb-2 px-4 flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">CONTAINERS</span>
+          </div>
+
+          {containers.length === 0 ? (
+            <div className="px-4 py-2 text-sm text-gray-500">No containers</div>
+          ) : (
+            containers.map((container) => (
+              <Link
+                key={container.container_name}
+                to={`/container/${container.container_name}`}
+                className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-colors ${
+                  location.pathname === `/container/${container.container_name}`
+                    ? "bg-primary text-white"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-700"
+                }`}
+              >
+                <Monitor className="w-5 h-5" />
+                <span className="flex-1 truncate">{container.container_name}</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${container.running ? "bg-success" : "bg-danger"}`}
+                  title={container.running ? "Running" : "Stopped"}
                 />
               </Link>
             ))

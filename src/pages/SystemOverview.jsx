@@ -6,13 +6,14 @@ import RealtimeChart from "../components/RealtimeChart"
 import StatCard from "../components/StatCard"
 import ServicesTable from "../components/ServicesTable"
 import AlertsTable from "../components/AlertsTable"
+import ContainersTable from "../components/ContainersTable"
 import { useWebSocket } from "../hooks/useWebSocket"
 import { useAlerts } from "../hooks/useAlerts" // Import the useAlerts hook
-import { fetchApps } from "../utils/api"
+import { fetchApps, fetchContainers, fetchSystemThreshold } from "../utils/api"
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
-const ALERT_DURATION_MS = 10000 // 10 seconds
+const ALERT_DURATION_MS = 600000 // 600 seconds
 
 export default function SystemOverview() {
   const [paused, setPaused] = useState(false)
@@ -24,11 +25,20 @@ export default function SystemOverview() {
   const [currentStats, setCurrentStats] = useState(null)
   const [services, setServices] = useState([])
   const [appsInfo, setAppsInfo] = useState({})
-  const [hasActiveAlert, setHasActiveAlert] = useState({})
+  const [containers, setContainers] = useState([])
+  const [systemThresholds, setSystemThresholds] = useState(null)
 
   const wsUrl = `${WS_BASE_URL}/ws/live?mode=combined&interval_ms=1000`
   const { data, error, isConnected } = useWebSocket(wsUrl, !paused)
-  const { alerts: systemAlerts } = useAlerts("__system__", 10, true)
+  const [limitAlerts, setLimitAlerts] = useState(10)
+ 
+  const {data: containersData, error: containersError, isConnected: isContainersWsConnected} = useWebSocket(`${WS_BASE_URL}/ws/containers`, true)
+  const [containerStats, setContainerStats] = useState([])
+
+  const handle_load_more_alerts = () => {
+    setLimitAlerts((prev) => prev + 10)
+  }
+  const { alerts: systemAlerts, isAlertsWsConnected, alertsWsError } = useAlerts("__system__", limitAlerts, true)
 
   useEffect(() => {
     const loadAppsInfo = async () => {
@@ -47,12 +57,16 @@ export default function SystemOverview() {
   }, [])
 
   useEffect(() => {
-    const alertMap = {}
-    systemAlerts.forEach((alert) => {
-      const key = alert.alert_type
-      alertMap[key] = true
-    })
-    setHasActiveAlert(alertMap)
+    const loadSystemThresholds = async () => {
+      try {
+        const thresholds = await fetchSystemThreshold()
+        setSystemThresholds(thresholds)
+      } catch (error) {
+        console.error("Failed to load system thresholds:", error)
+      }
+    }
+    loadSystemThresholds()
+  
   }, [systemAlerts])
 
   useEffect(() => {
@@ -65,6 +79,7 @@ export default function SystemOverview() {
           ...service,
           version: appsInfo[service.app_id]?.version,
           version_real: appsInfo[service.app_id]?.version_real,
+          status: appsInfo[service.app_id]?.running ? "Running" : "Stopped",
         }))
         setServices(servicesWithVersion)
       }
@@ -116,6 +131,27 @@ export default function SystemOverview() {
     }
   }, [data, paused, appsInfo])
 
+  useEffect(() => {
+    const loadContainers = async () => {
+      try {
+        const containersList = await fetchContainers()
+        setContainers(containersList)
+      } catch (error) {
+        console.error("Failed to load containers:", error)
+      }
+    }
+    loadContainers()
+    const interval = setInterval(loadContainers, 30000) // Refresh every 30s
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+
+    if (containersData && paused === false) {
+      setContainerStats(containersData)
+    }
+  }, [containersData])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -155,18 +191,19 @@ export default function SystemOverview() {
             icon={<Cpu className="w-6 h-6 text-primary" />}
             label="CPU Usage"
             value={`${currentStats.cpu_percent?.toFixed(1)}%`}
-            isAlert={hasActiveAlert.cpu}
+            isAlert={currentStats.cpu_percent > (systemThresholds?.cpu_threshold_percent || 90)}  
           />
           <StatCard
             icon={<MemoryStick className="w-6 h-6 text-primary" />}
             label="Memory"
             value={`${(currentStats.mem_bytes / (1024 * 1024 * 1024)).toFixed(1)} / ${(currentStats.total_ram / (1024 * 1024 * 1024)).toFixed(1)} GB`}
-            isAlert={hasActiveAlert.memory}
+            isAlert={(currentStats.mem_bytes/currentStats.total_ram)*100 > (systemThresholds?.memory_threshold || 90)}  
           />
           <StatCard
             icon={<Database className="w-6 h-6 text-primary" />}
             label="Disk Usage"
             value={`${currentStats.disk_used_percent?.toFixed(1) || 0}%`}
+            isAlert={currentStats.disk_used_percent > (systemThresholds?.disk_usage_threshold_percent || 90)}
           />
           <StatCard
             icon={<HardDrive className="w-6 h-6 text-primary" />}
@@ -181,7 +218,10 @@ export default function SystemOverview() {
         </div>
       )}
 
-      <ServicesTable services={services} systemStats={currentStats} />
+      <ServicesTable services={services} systemStats={currentStats} appsInfo={appsInfo} />
+
+      {/* Containers Table */}
+      <ContainersTable containers={containers} containerStats={containerStats} />
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -206,7 +246,15 @@ export default function SystemOverview() {
         />
       </div>
 
-      <AlertsTable appId="__system__" title="System Alerts" />
+      <AlertsTable
+        appId="__system__"
+        title="System Alerts"
+        alerts={systemAlerts}
+        isConnected={isAlertsWsConnected}
+        error={alertsWsError}
+        setLimitAlerts={handle_load_more_alerts}
+        limitAlerts={limitAlerts}
+      />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import Layout from "./components/Layout"
 import SystemOverview from "./pages/SystemOverview"
 import ServiceDetail from "./pages/ServiceDetail"
+import ContainerDetail from "./pages/ContainerDetail"
 
 function App() {
   const [darkMode, setDarkMode] = useState(false)
@@ -33,6 +34,7 @@ function App() {
       <Routes>
         <Route path="/" element={<SystemOverview />} />
         <Route path="/service/:appId" element={<ServiceDetail />} />
+        <Route path="/container/:container_name" element={<ContainerDetail />} />
       </Routes>
     </Layout>
   )

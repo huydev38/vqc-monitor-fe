@@ -1,12 +1,33 @@
 import { AlertCircle, CheckCircle, AlertTriangle } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
-export default function ServicesTable({ services, systemStats }) {
+export default function ServicesTable({ services, systemStats, appsInfo }) {
+  const apps_keys = Object.keys(appsInfo)
+  if (services.length !== apps_keys.length) {
+    for (let i = 0; i < apps_keys.length; i++) {
+      const app = appsInfo[apps_keys[i]]
+      const exists = services.find((s) => s.app_id === app.app_id)
+      if (!exists) {
+        services.push({
+          app_id: app.app_id,
+          cpu_percent: 0,
+          mem_bytes: 0,
+          cpu_threshold: app.cpu_threshold,
+          memory_threshold_mb: app.memory_threshold_mb,
+          version: app.version,
+          version_real: null,
+          uptime: null,
+          status: "Stopped",
+        })
+      }
+    }
+  }
   const navigate = useNavigate()
   const getStatusColor = (isExceeded) => {
     if (isExceeded) return "text-danger bg-danger/10"
     return "text-success bg-success/10"
   }
+
 
   const getStatusBg = (isExceeded) => {
     if (isExceeded) return "bg-danger/20"
@@ -33,6 +54,7 @@ export default function ServicesTable({ services, systemStats }) {
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
               <th className="px-6 py-3 text-left text-sm font-semibold">Service</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">CPU</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Memory</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Defined Version</th>
@@ -58,22 +80,39 @@ export default function ServicesTable({ services, systemStats }) {
                   <td className="px-6 py-4 font-medium">{service.app_id}</td>
 
                   <td className="px-6 py-4">
-                    <div
-                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusBg(cpuExceeded)}`}
+                    <span
+                      className={`font-medium ${service.status === "Running" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                     >
+                      {service.status}
+                    </span>
+                  </td>
+
+                  <td className="px-6 py-4">
+                    <div
+                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${service.status === "Running" ? getStatusBg(cpuExceeded) : ""}`}
+                    >
+                      {service.status === "Running" ? (
                       <span className={getStatusColor(cpuExceeded)}>
                         {service.cpu_percent.toFixed(2)}% / {service.cpu_threshold}%
                       </span>
+                      ) : (
+                        <span className="text-gray-500">-</span>
+                      )}
+                    
                       {cpuExceeded && <AlertCircle className="w-3 h-3 text-danger" />}
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <div
-                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusBg(memExceeded)}`}
+                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${service.status === "Running" ? getStatusBg(memExceeded) : ""}`}
                     >
+                      {service.status === "Running" ? (
                       <span className={getStatusColor(memExceeded)}>
                         {memMB.toFixed(1)} / {service.memory_threshold_mb} MB
                       </span>
+                      ) : (
+                        <span className="text-gray-500">-</span>
+                      )}
                       {memExceeded && <AlertCircle className="w-3 h-3 text-danger" />}
                     </div>
                   </td>

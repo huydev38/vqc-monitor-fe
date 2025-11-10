@@ -6,26 +6,24 @@ import { Cpu, HardDrive, MemoryStick, Activity, AlertCircle, Calendar, Play, Squ
 import RealtimeChart from "../components/RealtimeChart"
 import StatCard from "../components/StatCard"
 import { useWebSocket } from "../hooks/useWebSocket"
-import { fetchServiceStats, fetchApps, controlService } from "../utils/api"
+import { fetchServiceStats, controlService, fetchContainers, fetchContainerStats } from "../utils/api"
 import AlertsTable from "../components/AlertsTable"
-import { useAlerts } from "../hooks/useAlerts"
 import StateTimeline from "../components/StateTimeline"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
+import { useContainerAlerts } from "../hooks/useContainerAlerts"
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
 
 export default function ServiceDetail() {
-  const { appId } = useParams()
-  const [mode, setMode] = useState()
+  const { container_name } = useParams()
+  const [mode, setMode] = useState("live") // live | history
   const [cpuData, setCpuData] = useState([])
   const [memData, setMemData] = useState([])
-  const [diskData, setDiskData] = useState([])
   const [currentStats, setCurrentStats] = useState(null)
   const [timeRange, setTimeRange] = useState("1h")
   const [loading, setLoading] = useState(false)
-  const [trackable, setTrackable] = useState(true)
-  const [serviceInfo, setServiceInfo] = useState(null)
+  const [containerInfo, setContainerInfo] = useState(null)
 
   // Dùng Date | null cho react-datepicker
   const [customDateRange, setCustomDateRange] = useState(false)
@@ -37,51 +35,44 @@ export default function ServiceDetail() {
 
   const [controlLoading, setControlLoading] = useState(false)
   const {
-    alerts: serviceAlerts,
+    alerts: containersAlerts,
     isAlertsWsConnected,
     alertsWsError,
-  } = useAlerts(appId, limitAlerts, appId !== "system")
+  } = useContainerAlerts()
   const [hasActiveAlert, setHasActiveAlert] = useState({})
 
   useEffect(() => {
     const alertMap = {}
-    serviceAlerts.forEach((alert) => {
+    containersAlerts.forEach((alert) => {
       if (Date.now() - alert.ts_ms > 900000) return
       const key = alert.alert_type
       alertMap[key] = true
     })
     setHasActiveAlert(alertMap)
-  }, [serviceAlerts])
+  }, [containersAlerts])
 
   useEffect(() => {
-    if (appId === "system") {
-      setMode("history")
-    } else {
-      setMode("live")
-    }
-    const loadServiceInfo = async () => {
+    const loadContainerInfo = async () => {
       try {
-        const services = await fetchApps()
-        const service = services.find((s) => s.app_id === appId)
-        if (service) {
-          setServiceInfo(service)
-          setTrackable(service.trackable)
+        const containers = await fetchContainers()
+        const container = containers.find((c) => c.container_name === container_name)
+        if (container) {
+          setContainerInfo(container)
         }
       } catch (error) {
-        console.error("Failed to load service info:", error)
+        console.error("Failed to load container info:", error)
       }
     }
-    loadServiceInfo()
-  }, [appId])
+    loadContainerInfo()
+  }, [container_name])
 
-  const wsUrl = `${WS_BASE_URL}/ws/live?mode=service&app_id=${appId}&interval_ms=1000`
-  const { data, error, isConnected } = useWebSocket(wsUrl, mode === "live" && trackable)
+  const wsUrl = `${WS_BASE_URL}/ws/containers?&container=${container_name}&interval_ms=1000`
+  const { data, error, isConnected } = useWebSocket(wsUrl, mode === "live")
 
   // Handle live data
   useEffect(() => {
     if (data && mode === "live") {
       const timestamp = new Date(data.ts_ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
-
       setCurrentStats(data)
 
       setCpuData((prev) => {
@@ -93,41 +84,27 @@ export default function ServiceDetail() {
         const newData = [...prev, { time: timestamp, value: data.mem_bytes / (1024 * 1024) }]
         return newData.slice(-60)
       })
-
-      setDiskData((prev) => {
-        const newData = [
-          ...prev,
-          {
-            time: timestamp,
-            read: data.read_Bps / 1024,
-            write: data.write_Bps / 1024,
-          },
-        ]
-        return newData.slice(-60)
-      })
     }
   }, [data, mode])
 
   // Load historical data
   useEffect(() => {
-    if (mode === "history" && trackable) {
+    if (mode === "history") {
       loadHistoricalData()
     }
-  }, [mode, timeRange, appId, trackable, customDateRange, startDate, endDate])
+  }, [mode, timeRange, container_name, customDateRange, startDate, endDate])
 
   useEffect(() => {
     if (mode === "history") {
       // Clear live data when switching to history
       setCpuData([])
       setMemData([])
-      setDiskData([])
       setCurrentStats(null)
       setHasData(true)
     } else if (mode === "live") {
       // Clear history data when switching to live
       setCpuData([])
       setMemData([])
-      setDiskData([])
       setCurrentStats(null)
       setHasData(true)
     }
@@ -157,13 +134,12 @@ export default function ServiceDetail() {
       const screenWidth = window.innerWidth
       const maxPoints = screenWidth < 640 ? 30 : screenWidth < 1024 ? 50 : 100
 
-      const response = await fetchServiceStats(appId, start, end, maxPoints)
+      const response = await fetchContainerStats(container_name, start, end, maxPoints)
 
       if (!response || !response.points || response.points.length === 0) {
         setHasData(false)
         setCpuData([])
         setMemData([])
-        setDiskData([])
         setCurrentStats(null)
       } else {
         setHasData(true)
@@ -198,24 +174,14 @@ export default function ServiceDetail() {
           timestamp: point.t,
         }))
 
-        const diskHistory = response.points.map((point) => ({
-          time: formatTime(point.t),
-          read: point.io_r_avg / 1024,
-          write: point.io_w_avg / 1024,
-          timestamp: point.t,
-        }))
-
         setCpuData(cpuHistory)
         setMemData(memHistory)
-        setDiskData(diskHistory)
 
         // Set current stats to last point
         const lastPoint = response.points[response.points.length - 1]
         setCurrentStats({
           cpu_percent: lastPoint.cpu_avg,
           mem_bytes: lastPoint.mem_avg,
-          read_Bps: lastPoint.io_r_avg,
-          write_Bps: lastPoint.io_w_avg,
         })
       }
     } catch (error) {
@@ -226,7 +192,6 @@ export default function ServiceDetail() {
       setHasData(false)
       setCpuData([])
       setMemData([])
-      setDiskData([])
     } finally {
       setLoading(false)
     }
@@ -249,23 +214,23 @@ export default function ServiceDetail() {
     })
   }
 
-  const handleServiceControl = async (action) => {
-    if (!confirm(`Are you sure you want to ${action} this service?`)) {
+  const handleContainerControl = async (action) => {
+    if (!confirm(`Are you sure you want to ${action} this container?`)) {
       return
     }
 
     setControlLoading(true)
     try {
-      await controlService(appId, action)
-      // Reload service info after control action
-      const services = await fetchApps()
-      const service = services.find((s) => s.app_id === appId)
-      if (service) {
-        setServiceInfo(service)
+      await controlService(container_name, action)
+      // Reload container info after control action
+      const containers = await fetchContainers()
+      const container = containers.find((s) => s.container_name === container_name)
+      if (container) {
+        setContainerInfo(container)
       }
     } catch (error) {
-      console.error(`Failed to ${action} service:`, error)
-      alert(`Failed to ${action} service. Please try again.`)
+      console.error(`Failed to ${action} container:`, error)
+      alert(`Failed to ${action} container. Please try again.`)
     } finally {
       setControlLoading(false)
     }
@@ -281,57 +246,54 @@ export default function ServiceDetail() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <Activity className="w-8 h-8 text-primary" />
-            {appId}
+            {container_name}
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            {serviceInfo ? (
+            {containerInfo ? (
               <span>
-                {serviceInfo.version && `v${serviceInfo.version} • `}
-                <span className={serviceInfo.running ? "text-success" : "text-danger"}>
-                  {serviceInfo.running ? "Running" : "Stopped"}
+                {containerInfo.version && `v${containerInfo.version} • `}
+                <span className={containerInfo.running ? "text-success" : "text-danger"}>
+                  {containerInfo.running ? "Running" : "Stopped"}
                 </span>
               </span>
             ) : (
-              "Service Monitoring"
+              "Container Monitoring"
             )}
           </p>
         </div>
         <div className="flex gap-2">
-          {appId == "system"
-            ? null
-            : trackable && (
-                <button onClick={() => setMode("live")} className={mode === "live" ? "btn-primary" : "btn-secondary"}>
-                  Live
-                </button>
-              )}
-          {trackable && (
+
+ 
+            <button onClick={() => setMode("live")} className={mode === "live" ? "btn-primary" : "btn-secondary"}>
+              Live
+            </button>
+
             <button onClick={() => setMode("history")} className={mode === "history" ? "btn-primary" : "btn-secondary"}>
               History
             </button>
-          )}
         </div>
       </div>
 
-      {appId !== "system" && (
+
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => handleServiceControl("start")}
-            disabled={controlLoading || serviceInfo?.running}
+            onClick={() => handleContainerControl("start")}
+            disabled={controlLoading || containerInfo?.running}
             className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Play className="w-4 h-4" />
             Start
           </button>
           <button
-            onClick={() => handleServiceControl("stop")}
-            disabled={controlLoading || !serviceInfo?.running}
+            onClick={() => handleContainerControl("stop")}
+            disabled={controlLoading || !containerInfo?.running}
             className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Square className="w-4 h-4" />
             Stop
           </button>
           <button
-            onClick={() => handleServiceControl("restart")}
+            onClick={() => handleContainerControl("restart")}
             disabled={controlLoading}
             className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -339,16 +301,7 @@ export default function ServiceDetail() {
             Restart
           </button>
         </div>
-      )}
 
-      {!trackable && (
-        <div className="bg-warning/10 border border-warning text-warning px-4 py-3 rounded-lg flex items-center gap-3">
-          <AlertCircle className="w-5 h-5" />
-          <span>This service is not trackable. Monitoring data is not available.</span>
-        </div>
-      )}
-
-      {trackable && (
         <>
           {mode === "history" && (
             <div className="space-y-4">
@@ -447,26 +400,22 @@ export default function ServiceDetail() {
                 value={`${(currentStats.mem_bytes / (1024 * 1024)).toFixed(1)} MB`}
                 isAlert={hasActiveAlert.memory}
               />
-              <StatCard
-                icon={<HardDrive className="w-6 h-6 text-primary" />}
-                label="Disk I/O"
-                value={`${((currentStats.read_Bps + currentStats.write_Bps) / 1024).toFixed(1)} KB/s`}
-              />
             </div>
           )}
 
           {/* Charts */}
           {hasData && (cpuData.length > 0 || mode === "live") && (
             <div className="space-y-6">
-              {mode === "history" && appId !== "system" && (
+              {mode === "history" && (
                 <StateTimeline
-                  appId={appId}
+                  appId={container_name}
                   startTime={
                     customDateRange && startDate
                       ? startDate.getTime()
                       : Date.now() - (timeRange === "1h" ? 3600000 : timeRange === "6h" ? 21600000 : 86400000)
                   }
                   endTime={customDateRange && endDate ? endDate.getTime() : Date.now()}
+                  isContainer={true}
                 />
               )}
 
@@ -486,14 +435,6 @@ export default function ServiceDetail() {
                 unit="MB"
                 showMinMax={mode === "history"}
               />
-              <RealtimeChart
-                title="Disk I/O (KB/s)"
-                data={diskData}
-                dataKeys={["read", "write"]}
-                colors={["#10b981", "#ef4444"]}
-                unit="KB/s"
-                legend={["Read", "Write"]}
-              />
             </div>
           )}
 
@@ -504,30 +445,16 @@ export default function ServiceDetail() {
             </div>
           )}
         </>
-      )}
 
-      {appId !== "system" && (
-        <AlertsTable
-          appId={appId}
-          title={`${appId} Alerts`}
-          alerts={serviceAlerts}
-          isConnected={isAlertsWsConnected}
-          error={alertsWsError}
-          setLimitAlerts={handle_load_more_alerts}
-          limitAlerts={limitAlerts}
-        />
-      )}
-      {appId === "system" && (
-        <AlertsTable
-          appId="__system__"
-          title="System Alerts"
-          alerts={serviceAlerts}
-          isConnected={isAlertsWsConnected}
-          error={alertsWsError}
-          setLimitAlerts={handle_load_more_alerts}
-          limitAlerts={limitAlerts}
-        />
-      )}
+      <AlertsTable
+        appId={container_name}
+        title="Container Alerts"
+        alerts={containersAlerts}
+        isConnected={isAlertsWsConnected}
+        isContainer={true}
+        setLimitAlerts={handle_load_more_alerts}
+        limitAlerts={limitAlerts}
+      />
     </div>
   )
 }

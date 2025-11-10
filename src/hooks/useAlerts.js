@@ -1,116 +1,164 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+
 
 export function useAlerts(appId = null, limit = 10, enabled = true) {
     const [alerts, setAlerts] = useState([])
     const [isConnected, setIsConnected] = useState(false)
-    const [error, setError] = useState(null)
+    const [error, setError] = useState(false)
+
     const wsRef = useRef(null)
     const reconnectTimeoutRef = useRef(null)
-    const currentAppIdRef = useRef(appId)
-    const isConnectingRef = useRef(false) // Add flag to prevent duplicate connections
+    const isConnectingRef = useRef(false)
+    const lastUrlRef = useRef(null)
+    const connectionIdRef = useRef(0) // tăng mỗi lần (re)connect
+    const mountedRef = useRef(true)
 
+    // Clear UI khi đổi app để tránh “bóng ma”
     useEffect(() => {
-        currentAppIdRef.current = appId
+        setAlerts([])
     }, [appId])
 
     useEffect(() => {
+        mountedRef.current = true
+        return () => {
+            mountedRef.current = false
+        }
+    }, [])
+
+    useEffect(() => {
+        // Tắt → đóng sạch và thôi
         if (!enabled) {
             if (reconnectTimeoutRef.current) {
                 clearTimeout(reconnectTimeoutRef.current)
                 reconnectTimeoutRef.current = null
             }
             if (wsRef.current) {
-                wsRef.current.close()
+                try { wsRef.current.close() } catch { }
                 wsRef.current = null
             }
-            isConnectingRef.current = false // Reset connecting flag
+            lastUrlRef.current = null
+            isConnectingRef.current = false
             setIsConnected(false)
             return
         }
 
-        if (isConnectingRef.current || wsRef.current?.readyState === WebSocket.OPEN) {
-            return
-        }
+        const WS_BASE_URL = import.meta.env.VITE_API_BASE_URL
+        let desiredUrl = `${WS_BASE_URL}/ws/alerts?limit=${limit}`
+        if (appId) desiredUrl += `&app_id=${appId}`
 
-        // Close existing connection before creating a new one
-        if (wsRef.current) {
-            wsRef.current.close()
-            wsRef.current = null
-        }
+        // Luôn dọn timer cũ trước
         if (reconnectTimeoutRef.current) {
             clearTimeout(reconnectTimeoutRef.current)
             reconnectTimeoutRef.current = null
         }
 
-        const connectWebSocket = () => {
-            if (isConnectingRef.current) {
-                return
-            }
+        // Nếu đã có socket OPEN đúng URL thì giữ nguyên
+        if (
+            wsRef.current &&
+            wsRef.current.readyState === WebSocket.OPEN &&
+            (lastUrlRef.current === desiredUrl || wsRef.current.url === desiredUrl)
+        ) {
+            return
+        }
+
+        // Nếu có socket nhưng URL khác → đóng
+        if (wsRef.current && (lastUrlRef.current !== desiredUrl && wsRef.current.url !== desiredUrl)) {
+            try { wsRef.current.close() } catch { }
+            wsRef.current = null
+            setIsConnected(false)
+        }
+
+        // Tránh đúp connect cùng URL
+        if (isConnectingRef.current && lastUrlRef.current === desiredUrl) {
+            return
+        }
+
+        const connect = () => {
+            // Nếu đang kết nối cùng URL → thôi
+            if (isConnectingRef.current && lastUrlRef.current === desiredUrl) return
 
             isConnectingRef.current = true
+            const myConnectionId = ++connectionIdRef.current
 
             try {
-                const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
-                let url = `${WS_BASE_URL}/ws/alerts?limit=${limit}`
-                if (currentAppIdRef.current) {
-                    url += `&app_id=${currentAppIdRef.current}`
-                }
+                const ws = new WebSocket(desiredUrl)
+                wsRef.current = ws
+                lastUrlRef.current = desiredUrl
 
-                wsRef.current = new WebSocket(url)
-
-                wsRef.current.onopen = () => {
+                ws.onopen = () => {
+                    // Chỉ set state nếu đây là kết nối “đương nhiệm”
+                    if (connectionIdRef.current !== myConnectionId || !mountedRef.current) return
                     isConnectingRef.current = false
                     setIsConnected(true)
-                    setError(null)
+                    setError(false)
                 }
 
-                wsRef.current.onmessage = (event) => {
+                ws.onmessage = (event) => {
+                    if (connectionIdRef.current !== myConnectionId || !mountedRef.current) return
                     try {
                         const data = JSON.parse(event.data)
-                        if (data.alerts && Array.isArray(data.alerts)) {
-                            setAlerts(data.alerts)
-                        }
+
+                        // Nếu server gửi dạng { alerts: Alert[] }
+                        let next = Array.isArray(data.alerts) ? data.alerts : []
+                        // (Khuyến nghị) Lọc theo app hiện tại nếu có trường nhận dạng
+                        // if (appId) {
+                        //     next = next.filter(() =>
+                        //         a?.app_id === appId || a?.service_id === appId || a?.appId === appId
+                        //     )
+                        // }
+
+                        setAlerts(next)
                     } catch (err) {
                         console.error("Failed to parse alerts:", err)
                     }
                 }
 
-                wsRef.current.onerror = (err) => {
+                ws.onerror = (err) => {
+                    if (connectionIdRef.current !== myConnectionId || !mountedRef.current) return
                     console.error("WebSocket error:", err)
                     isConnectingRef.current = false
                     setError("Connection error")
                     setIsConnected(false)
                 }
 
-                wsRef.current.onclose = () => {
+                ws.onclose = () => {
+                    // Nếu KHÔNG còn là kết nối hiện tại → đừng reconnect
+                    if (connectionIdRef.current !== myConnectionId || !mountedRef.current) return
                     isConnectingRef.current = false
                     setIsConnected(false)
-                    // Attempt to reconnect after 5 seconds if still enabled
-                    if (enabled) {
-                        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000)
+
+                    // Chỉ reconnect nếu vẫn enabled và URL vẫn là desiredUrl hiện tại
+                    if (enabled && (lastUrlRef.current === desiredUrl)) {
+                        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+                        reconnectTimeoutRef.current = setTimeout(connect, 5000)
                     }
                 }
             } catch (err) {
+                if (connectionIdRef.current !== myConnectionId || !mountedRef.current) return
                 console.error("Failed to connect WebSocket:", err)
                 isConnectingRef.current = false
-                setError(err.message)
+                setError(err?.message ?? "Connect error")
             }
         }
 
-        connectWebSocket()
+        connect()
 
+        // Cleanup cho lần thay đổi deps hoặc unmount
         return () => {
             if (reconnectTimeoutRef.current) {
                 clearTimeout(reconnectTimeoutRef.current)
                 reconnectTimeoutRef.current = null
             }
             if (wsRef.current) {
-                wsRef.current.close()
+                try { wsRef.current.close() } catch { }
                 wsRef.current = null
             }
-            isConnectingRef.current = false // Reset flag on cleanup
+            lastUrlRef.current = null
+            isConnectingRef.current = false
+            // tăng connectionId để “vô hiệu hóa” mọi handler cũ
+            connectionIdRef.current++
         }
     }, [appId, limit, enabled])
 

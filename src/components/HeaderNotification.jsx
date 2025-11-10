@@ -4,16 +4,26 @@ import { useState, useEffect } from "react"
 import { Bell, X } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useAlerts } from "../hooks/useAlerts"
+import { useContainerAlerts } from "../hooks/useContainerAlerts"
 
 export default function HeaderNotification() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [recentAlerts, setRecentAlerts] = useState([])
   const navigate = useNavigate()
-  const { alerts } = useAlerts(null, 10, true)
+
+  const { alerts: serviceAlerts } = useAlerts(null, 10, true)
+  const { alerts: containerAlerts } = useContainerAlerts(null, 10, true)
 
   useEffect(() => {
-    setRecentAlerts(alerts.slice(0, 5))
-  }, [alerts])
+    const combined = [
+      ...serviceAlerts.map((a) => ({ ...a, type: "service" })),
+      ...containerAlerts.map((a) => ({ ...a, type: "container" })),
+    ]
+      .sort((a, b) => b.ts_ms - a.ts_ms)
+      .slice(0, 5)
+
+    setRecentAlerts(combined)
+  }, [serviceAlerts, containerAlerts])
 
   const formatTime = (tsMs) => {
     const now = Date.now()
@@ -30,8 +40,10 @@ export default function HeaderNotification() {
 
   const handleAlertClick = (alert) => {
     setShowDropdown(false)
-    if (alert.app_id === "__system__") {
-      navigate("/service/system")
+    if (alert.type === "container") {
+      navigate(`/container/${alert.container_name}`)
+    } else if (alert.app_id === "__system__") {
+      navigate("/system")
     } else {
       navigate(`/service/${alert.app_id}`)
     }
@@ -67,7 +79,7 @@ export default function HeaderNotification() {
             ) : (
               recentAlerts.map((alert, idx) => (
                 <button
-                  key={`${alert.app_id}-${alert.ts_ms}-${idx}`}
+                  key={`${alert.type}-${alert.app_id || alert.container_name}-${alert.ts_ms}-${idx}`}
                   onClick={() => handleAlertClick(alert)}
                   className="w-full p-3 border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700 text-left transition-colors"
                 >
@@ -79,7 +91,11 @@ export default function HeaderNotification() {
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold">
-                        {alert.app_id === "__system__" ? "System" : alert.app_id}{" "}
+                        {alert.type === "container"
+                          ? alert.container_name
+                          : alert.app_id === "__system__"
+                            ? "System"
+                            : alert.app_id}{" "}
                         <span className="text-xs font-normal text-gray-500">{alert.alert_type.toUpperCase()}</span>
                       </p>
                       <p className="text-xs text-gray-500 mt-1">{formatTime(alert.ts_ms)}</p>
